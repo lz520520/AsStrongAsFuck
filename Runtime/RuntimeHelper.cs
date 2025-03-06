@@ -89,7 +89,7 @@ namespace AsStrongAsFuck.Runtime
                     var newLocal = new Local(Importer.Import(local.Type));
                     newMethodDef.Body.Variables.Add(newLocal);
                     newLocal.Name = local.Name;
-                    newLocal.PdbAttributes = local.PdbAttributes;
+                    newLocal.Attributes = local.Attributes;
 
                     bodyMap[local] = newLocal;
                 }

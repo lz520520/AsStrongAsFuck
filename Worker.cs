@@ -227,11 +227,11 @@ namespace AsStrongAsFuck
 
                 if (resource.Name.EndsWith(".compressed"))
                 {
-                    list.Add(DecompressCosturaAssembly(resource.GetResourceStream()));
+                    list.Add(DecompressCosturaAssembly(resource.CreateReader().AsStream()));
                     continue;
                 }
 
-                list.Add(AssemblyDef.Load(resource.GetResourceStream()));
+                list.Add(AssemblyDef.Load(resource.CreateReader().AsStream()));
             }
 
             return list;

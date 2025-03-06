@@ -12,7 +12,9 @@ namespace AsStrongAsFuck
     {
         public static string Base64Representation(this string str)
         {
-            return Convert.ToBase64String(Encoding.Default.GetBytes(str));
+            var data = Convert.ToBase64String(Encoding.Default.GetBytes(str)).TrimEnd('=');
+            //Console.WriteLine($"origin: {str}, new: {data}");
+            return data;
         }
     }
 }

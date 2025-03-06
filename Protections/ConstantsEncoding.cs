@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace AsStrongAsFuck
@@ -17,59 +18,93 @@ namespace AsStrongAsFuck
         public List<byte> array = new List<byte>();
         public Dictionary<RVA, List<Tuple<int, int, int>>> Keys = new Dictionary<RVA, List<Tuple<int, int, int>>>();
 
+        static void il(MethodDef def)
+        {
+            int index = 0;
+
+            foreach (var instr in def.Body.Instructions)
+            {
+                Console.WriteLine($"{index}: {instr.OpCode} {instr.Operand}");
+                index++;
+            }
+        }
+
+
         public void Execute(ModuleDefMD md)
         {
+            //TypeDef globalType = new TypeDefUser("RuntimeConstants", md.CorLibTypes.Object.TypeDefOrRef);
+            //globalType.Attributes = TypeAttributes.Public;
+
             var consttype = RuntimeHelper.GetRuntimeType("AsStrongAsFuck.Runtime.Constants");
-            FieldDef field = consttype.FindField("array");
-            Renamer.Rename(field, Renamer.RenameMode.Base64, 2);
-            field.DeclaringType = null;
+            FieldDef arrayField = consttype.FindField("array");
+            Renamer.Rename(arrayField, Renamer.RenameMode.Base64, 2);
+
+            arrayField.DeclaringType = null;
             foreach (TypeDef type in md.Types)
                 foreach (MethodDef method in type.Methods)
                     if (method.HasBody && method.Body.HasInstructions)
                         ExtractStrings(method);
-            md.GlobalType.Fields.Add(field);
+            md.GlobalType.Fields.Add(arrayField);
             MethodDef todef = consttype.FindMethod("Get");
+            Renamer.Rename(todef, Renamer.RenameMode.Base64, 2);
             todef.DeclaringType = null;
-            todef.Body.Instructions[59].Operand = field;
-            Renamer.Rename(todef, Renamer.RenameMode.Logical);
+            todef.Body.Instructions[58].Operand = arrayField;
+            todef.Body.Instructions[73].Operand = arrayField;
+            //Renamer.Rename(todef, Renamer.RenameMode.Logical);
             md.GlobalType.Methods.Add(todef);
             MethodDef init = consttype.FindMethod("Initialize");
-            MethodDef add = consttype.FindMethod("Set");
+            Renamer.Rename(init, Renamer.RenameMode.Base64, 2);
+
+            MethodDef aesDecode = consttype.FindMethod("aes");
+            Renamer.Rename(aesDecode, Renamer.RenameMode.Base64, 2);
+
+            aesDecode.DeclaringType = null;
             init.DeclaringType = null;
-            init.Body.Instructions[3].Operand = field;
-            List<Instruction> insts = new List<Instruction>(add.Body.Instructions);
-            insts[1].Operand = field;
-            insts[insts.Count - 1].OpCode = OpCodes.Nop;
-            insts.RemoveAt(0);
-            insts[1].OpCode = OpCodes.Ldc_I4;
-            insts[2].OpCode = OpCodes.Ldc_I4;
+            init.Body.Instructions[6].Operand = aesDecode;
+  
+            string key = getRandomString(16);
+            var compressed = aesEncode(array.ToArray(),key);
 
-            var compressed = Compress(array.ToArray());
+            FieldDef keyField = consttype.FindField("key");
+            Renamer.Rename(keyField, Renamer.RenameMode.Base64, 2);
 
+            keyField.DeclaringType = null;
+            md.GlobalType.Fields.Add(keyField);
+            aesDecode.Body.Instructions[6].Operand = keyField;
+            aesDecode.Body.Instructions[13].Operand = keyField;
+            md.GlobalType.Methods.Add(aesDecode);
+            var locArray = init.Body.Instructions[4].Operand;
 
             for (int i = 0; i < compressed.Length; i++)
             {
-                insts[1].Operand = i;
-                insts[2].Operand = Convert.ToInt32(compressed[i]);
-                for (int x = insts.Count - 1; x >= 0; x--)
-                {
-                    init.Body.Instructions.Insert(4, new Instruction(insts[x].OpCode, insts[x].Operand));
-                }
+                // 2. 赋值 array[15] = 158;
+                int offset = 5;
+                // 反向
+                init.Body.Instructions.Insert(offset, new Instruction(OpCodes.Stelem_I1)); // array[15] = 158
+                init.Body.Instructions.Insert(offset, new Instruction(OpCodes.Ldc_I4, Convert.ToInt32(compressed[i]))); // 要存储的值 158
+                init.Body.Instructions.Insert(offset, new Instruction(OpCodes.Ldc_I4, i)); // 数组索引 15
+                init.Body.Instructions.Insert(offset, new Instruction(OpCodes.Ldloc, locArray)); // 复制数组引用
             }
-            init.Body.Instructions[init.Body.Instructions.Count - 1 - 1].Operand = field;
-            init.Body.Instructions[init.Body.Instructions.Count - 1 - 99].Operand = field;
-            Renamer.Rename(init, Renamer.RenameMode.Base64, 2);
             md.GlobalType.Methods.Add(init);
             Decryptor = todef;
+
             MethodDef cctor = md.GlobalType.FindOrCreateStaticConstructor();
+
             cctor.Body = new CilBody();
+            cctor.Body.Instructions.Add(new Instruction(OpCodes.Ldstr, key));  // 加载 "key"
+            cctor.Body.Instructions.Add(new Instruction(OpCodes.Stsfld, keyField));  // 赋值给 key
+
             cctor.Body.Instructions.Add(new Instruction(OpCodes.Ldc_I4, compressed.Length));
             cctor.Body.Instructions.Add(new Instruction(OpCodes.Call, init));
+            cctor.Body.Instructions.Add(new Instruction(OpCodes.Stsfld, arrayField));
             cctor.Body.Instructions.Add(new Instruction(OpCodes.Ret));
+
             foreach (TypeDef type2 in md.Types)
                 foreach (MethodDef method2 in type2.Methods)
                     if (method2.HasBody && method2.Body.HasInstructions)
                         ReferenceReplace(method2);
+
+
 
         }
 
@@ -126,6 +161,30 @@ namespace AsStrongAsFuck
             }
             if (!Keys.ContainsKey(method.RVA))
                 Keys.Add(method.RVA, shit);
+        }
+        static string getRandomString(int length)
+        {
+            string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"; // "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+            char[] randomString = new char[length];
+
+            Random random = new Random();
+
+            for (int i = 0; i < length; i++)
+            {
+                randomString[i] = chars[random.Next(chars.Length)];
+            }
+
+            return new string(randomString);
+        }
+        public static byte[] aesEncode(byte[] data, string key)
+        {
+            RijndaelManaged rDel = new RijndaelManaged();
+            rDel.Key = Encoding.GetEncoding("ISO-8859-1").GetBytes(key);
+            rDel.IV = Encoding.GetEncoding("ISO-8859-1").GetBytes(key);
+            rDel.Mode = CipherMode.CBC;
+            rDel.Padding = PaddingMode.PKCS7;
+
+            return rDel.CreateEncryptor().TransformFinalBlock(data, 0, data.Length);
         }
 
         public static byte[] Compress(byte[] data)

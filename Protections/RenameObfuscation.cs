@@ -13,7 +13,7 @@ namespace AsStrongAsFuck
         {
             foreach (var type in md.Types)
             {
-                foreach (var method in type.Methods.Where(x => !x.IsConstructor && !x.IsVirtual))
+                foreach (var method in type.Methods.Where(x => !x.IsConstructor && !x.IsVirtual && !x.IsPublic))
                     Renamer.Rename(method, Renamer.RenameMode.Logical, 3);
             }
         }

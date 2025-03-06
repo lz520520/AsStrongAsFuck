@@ -3,16 +3,29 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace AsStrongAsFuck.Runtime
 {
     public class Constants
     {
+        public static byte[] array = new byte[] { };
+        static string key = "";
+
+        static byte[] aes(byte[] data)
+        {
+            RijndaelManaged rDel = new RijndaelManaged();
+            rDel.Key = Encoding.GetEncoding("ISO-8859-1").GetBytes(key);
+            rDel.IV = Encoding.GetEncoding("ISO-8859-1").GetBytes(key);
+            rDel.Mode = CipherMode.CBC;
+            rDel.Padding = PaddingMode.PKCS7;
+            data = rDel.CreateDecryptor().TransformFinalBlock(data, 0, data.Length);
+            return data;
+        }
         public static string Get(string one, int key, int len)
         {
+
             StackTrace trace = new StackTrace();
             var data = Encoding.Default.GetBytes(trace.GetFrame(1).GetMethod().Name);
             const int p = 16777619;
@@ -27,44 +40,35 @@ namespace AsStrongAsFuck.Runtime
             key += hash;
             for (int i = 0; i < len; i++)
             {
-                shit.Add(array[key + i]);
+                if (array == null)
+                {
+                    shit.Add(97);
+                }
+                else
+                {
+                    shit.Add(array[key + i]);
+                }
             }
             return Encoding.UTF8.GetString(shit.ToArray());
         }
 
-        public static void Initialize(int len)
+        public static byte[] Initialize(int len)
         {
-            array = new byte[len];
 
-            const int BUFFER_SIZE = 256;
-            byte[] tempArray = new byte[BUFFER_SIZE];
-            List<byte[]> tempList = new List<byte[]>();
-            int count = 0, length = 0;
-            MemoryStream ms = new MemoryStream(array);
-            DeflateStream ds = new DeflateStream(ms, CompressionMode.Decompress);
-            while ((count = ds.Read(tempArray, 0, BUFFER_SIZE)) > 0)
+            try
             {
-                if (count == BUFFER_SIZE)
-                {
-                    tempList.Add(tempArray);
-                    tempArray = new byte[BUFFER_SIZE];
-                }
-                else
-                {
-                    byte[] temp = new byte[count];
-                    Array.Copy(tempArray, 0, temp, 0, count);
-                    tempList.Add(temp);
-                }
-                length += count;
+                byte[] myArray = new byte[len];
+                //myArray[15] = 12;
+                //myArray[16] = 13;
+
+                return aes(myArray);
             }
-            byte[] retVal = new byte[length];
-            count = 0;
-            foreach (byte[] temp in tempList)
+            catch (Exception ex)
             {
-                Array.Copy(temp, 0, retVal, count, temp.Length);
-                count += temp.Length;
+                Console.WriteLine($"init error: {ex.Message}");
+
             }
-            array = retVal;
+            return new byte[len];
         }
 
         public static void Set()
@@ -72,6 +76,5 @@ namespace AsStrongAsFuck.Runtime
             array[0] = 0;
         }
 
-        public static byte[] array = new byte[] { };
     }
 }
