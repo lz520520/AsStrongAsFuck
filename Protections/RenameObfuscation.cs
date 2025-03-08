@@ -13,6 +13,10 @@ namespace AsStrongAsFuck
         {
             foreach (var type in md.Types)
             {
+                if (type.Name.Equals("<Module>"))
+                {
+                    continue;
+                }
                 foreach (var method in type.Methods.Where(x => !x.IsConstructor && !x.IsVirtual && !x.IsPublic))
                     Renamer.Rename(method, Renamer.RenameMode.Logical, 3);
             }
